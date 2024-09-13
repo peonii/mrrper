@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use jobs::{notice::NOTICE_CACHE, JobRunner};
+use jobs::JobRunner;
 use librus::{
     client::{LibrusClient, LibrusCredentials},
     handlers::notices,
@@ -21,11 +21,15 @@ pub enum BotError {
 
     #[error("An error has occurred with Librus.")]
     LibrusError(#[from] crate::librus::client::LibrusError),
+
+    #[error("An error has occurred with Redis.")]
+    RedisError(#[from] redis::RedisError),
 }
 
 #[derive(Clone)]
 pub struct State<'a> {
     pub librus: Arc<LibrusClient<'a>>,
+    pub redis: redis::Client,
 }
 
 pub async fn start(token: &str) -> Result<(), BotError> {
@@ -38,10 +42,13 @@ pub async fn start(token: &str) -> Result<(), BotError> {
             .into(),
     });
 
+    let rdc = redis::Client::open(std::env::var("REDIS_URL").expect("REDIS_URL not found"))?;
+
     librus.login().await?;
 
     let state = State {
         librus: Arc::new(librus),
+        redis: rdc,
     };
 
     let job_state = state.clone();

@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc, time::Duration};
+use std::{error::Error, future::Future, sync::Arc, time::Duration};
 
 use poise::serenity_prelude::{self, prelude::TypeMap, Cache, Http};
 use tokio::sync::RwLock;
@@ -34,11 +34,12 @@ where
 }
 
 impl<S: Clone> JobRunnerContext<S> {
-    pub async fn execute<F>(&self, mut runner: F)
+    pub async fn execute<F, E>(&self, runner: &mut F) -> Result<(), E>
     where
-        F: for<'a> FnRunner<'a, S, Output = ()>,
+        E: Error + Send + Sync,
+        F: for<'a> FnRunner<'a, S, Output = Result<(), E>>,
     {
-        runner.call(self).await;
+        runner.call(self).await
     }
 }
 
@@ -63,16 +64,20 @@ where
         }
     }
 
-    pub async fn start<F>(&mut self, runner: F)
+    pub async fn start<F, E>(&mut self, mut runner: F)
     where
-        F: Send + Sync + 'static + for<'a> FnRunner<'a, S, Output = ()>,
+        E: Error + Send + Sync,
+        F: Send + Sync + 'static + for<'a> FnRunner<'a, S, Output = Result<(), E>>,
     {
         let ctx = Arc::new(self.ctx.clone());
 
         let task = tokio::spawn(async move {
             let ctx = ctx.clone();
-
-            ctx.execute(runner).await;
+            loop {
+                if let Err(e) = ctx.execute(&mut runner).await {
+                    tracing::error!("An error has occurred while running job: {e}");
+                }
+            }
         });
 
         self.tasks.push(task);
