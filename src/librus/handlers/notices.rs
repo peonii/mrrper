@@ -21,7 +21,7 @@ pub struct SchoolNotice {
 }
 
 impl<'a> LibrusClient<'a> {
-    pub async fn fetch_notices(&self) -> LibrusResult<Vec<SchoolNotice>> {
+    pub async fn fetch_notices(&mut self) -> LibrusResult<Vec<SchoolNotice>> {
         Ok(self
             .request::<SchoolNoticeResponse>("https://api.librus.pl/3.0/SchoolNotices/")
             .await?

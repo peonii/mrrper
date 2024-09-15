@@ -64,7 +64,7 @@ where
         }
     }
 
-    pub async fn start<F, E>(&mut self, mut runner: F)
+    pub async fn start<F, E>(&mut self, name: &'static str, mut runner: F)
     where
         E: Error + Send + Sync,
         F: Send + Sync + 'static + for<'a> FnRunner<'a, S, Output = Result<(), E>>,
@@ -74,8 +74,9 @@ where
         let task = tokio::spawn(async move {
             let ctx = ctx.clone();
             loop {
+                tracing::info!("Running job {name}");
                 if let Err(e) = ctx.execute(&mut runner).await {
-                    tracing::error!("An error has occurred while running job: {e}");
+                    tracing::error!("An error has occurred while running job {name}: {e}");
                 }
             }
         });

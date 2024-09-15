@@ -100,10 +100,14 @@ async fn send_timetable_changes<'a>(
     Ok(())
 }
 
-async fn send_notice<'a>(_cache: &Arc<Cache>, http: &Arc<Http>, notice: &SchoolNotice) {
+async fn send_notice<'a>(
+    _cache: &Arc<Cache>,
+    http: &Arc<Http>,
+    notice: &SchoolNotice,
+) -> Result<(), BotError> {
     if notice.title.to_lowercase().contains("zmiany w") {
-        send_timetable_changes(http, notice).await;
-        return;
+        send_timetable_changes(http, notice).await?;
+        return Ok(());
     }
 
     let mut content = notice.content.clone();
@@ -117,22 +121,20 @@ async fn send_notice<'a>(_cache: &Arc<Cache>, http: &Arc<Http>, notice: &SchoolN
         .content(":bangbang: **Nowe Ogłoszenie**")
         .add_embed(embed);
 
-    if let Err(e) = msg
-        .execute(
-            http.as_ref(),
-            (
-                ChannelId::new(1283505729592103025),
-                Some(GuildId::new(930512190220435516)),
-            ),
-        )
-        .await
-    {
-        tracing::error!("An error occurred when sending notice: {e}");
-    }
+    msg.execute(
+        http.as_ref(),
+        (
+            ChannelId::new(930552545179500636),
+            Some(GuildId::new(930512190220435516)),
+        ),
+    )
+    .await?;
+
+    Ok(())
 }
 
 pub async fn notice_runner<'a>(ctx: &JobRunnerContext<State<'a>>) -> Result<(), BotError> {
-    let notices = ctx.state.librus.fetch_notices().await?;
+    let notices = ctx.state.librus.write().await.fetch_notices().await?;
 
     for notice in notices.iter() {
         let digest = ring::digest::digest(&ring::digest::SHA256, notice.content.as_bytes());
@@ -145,11 +147,15 @@ pub async fn notice_runner<'a>(ctx: &JobRunnerContext<State<'a>>) -> Result<(), 
         if let Some(cached) = cached {
             if cached.clone() != digest {
                 conn.set(&notice.id, digest)?;
-                send_notice(&ctx.cache, &ctx.http, notice).await;
+                send_notice(&ctx.cache, &ctx.http, notice).await?;
+                tracing::info!("Notice {} was updated", notice.id);
+            } else {
+                tracing::info!("Notice {} is already sent", notice.id);
             }
         } else {
             conn.set(&notice.id, digest)?;
-            send_notice(&ctx.cache, &ctx.http, notice).await;
+            send_notice(&ctx.cache, &ctx.http, notice).await?;
+            tracing::info!("Notice {} was sent", notice.id);
         }
     }
 

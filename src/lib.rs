@@ -9,6 +9,7 @@ use poise::serenity_prelude;
 use thiserror::Error;
 
 use poise::serenity_prelude as serenity;
+use tokio::sync::RwLock;
 
 pub mod commands;
 pub mod jobs;
@@ -28,11 +29,13 @@ pub enum BotError {
 
 #[derive(Clone)]
 pub struct State<'a> {
-    pub librus: Arc<LibrusClient<'a>>,
+    pub librus: Arc<RwLock<LibrusClient<'a>>>,
     pub redis: redis::Client,
 }
 
 pub async fn start(token: &str) -> Result<(), BotError> {
+    tracing_subscriber::fmt::init();
+
     let mut librus = LibrusClient::new()?.with_credentials(LibrusCredentials {
         email: std::env::var("LIBRUS_EMAIL")
             .expect("LIBRUS_EMAIL not found")
@@ -47,7 +50,7 @@ pub async fn start(token: &str) -> Result<(), BotError> {
     librus.login().await?;
 
     let state = State {
-        librus: Arc::new(librus),
+        librus: Arc::new(RwLock::new(librus)),
         redis: rdc,
     };
 
@@ -73,7 +76,9 @@ pub async fn start(token: &str) -> Result<(), BotError> {
         .await?;
 
     let mut job_runner = JobRunner::new(&client, job_state);
-    job_runner.start(jobs::notice::notice_runner).await;
+    job_runner
+        .start("notices", jobs::notice::notice_runner)
+        .await;
 
     client.start().await?;
 

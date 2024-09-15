@@ -120,7 +120,7 @@ impl<'a> LibrusClient<'a> {
     }
 
     pub async fn request<T: serde::de::DeserializeOwned + Sized>(
-        &self,
+        &mut self,
         url: &str,
     ) -> LibrusResult<T> {
         if self.token.is_none() {
@@ -137,6 +137,10 @@ impl<'a> LibrusClient<'a> {
         headers.insert("gzip", "true".parse()?);
 
         let req = self.http.get(url).headers(headers).send().await?;
+
+        if !req.status().is_success() {
+            self.login().await?;
+        }
 
         let resp = req.json::<T>().await?;
 
